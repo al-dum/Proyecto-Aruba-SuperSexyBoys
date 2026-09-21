@@ -8,6 +8,7 @@ pulp            # optimización del despacho (LP/MILP)
 matplotlib
 seaborn
 pyyaml
+streamlit
 joblib
 pytest
 ruff

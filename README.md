@@ -21,6 +21,7 @@ src/energy_dispatch/
   utils/                 Config, logging
 tests/
 main.py                  Punto de entrada (pipeline)
+app/                     Interfaz Streamlit (streamlit run app/streamlit_app.py)
 ```
 
 ## Uso
