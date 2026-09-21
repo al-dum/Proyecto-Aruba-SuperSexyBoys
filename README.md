@@ -24,11 +24,20 @@ main.py                  Punto de entrada (pipeline)
 app/                     Interfaz Streamlit (streamlit run app/streamlit_app.py)
 ```
 
-## Uso
+## Uso (*LINUX*/*MAC*)
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt && pip install -e .
+python main.py --config configs/config.yaml
+pytest
+```
+## Uso (*WINDOWS*)
+
+```bash
+python -m venv .venv.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pip install -e .
 python main.py --config configs/config.yaml
 pytest
 ```
