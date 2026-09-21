@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.idea/
+.vscode/
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Datos y modelos pesados (se conserva .gitkeep)
+data/raw/*
+data/interim/*
+data/processed/*
+data/external/*
+models/*
+reports/figures/*
+!**/.gitkeep

@@ -1,0 +1,14 @@
+numpy
+pandas
+scikit-learn
+xgboost
+lightgbm
+scipy
+pulp            # optimización del despacho (LP/MILP)
+matplotlib
+seaborn
+pyyaml
+joblib
+pytest
+ruff
+jupyter

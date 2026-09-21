@@ -1,0 +1,21 @@
+paths:
+  raw: data/raw
+  processed: data/processed
+  models: models
+  figures: reports/figures
+
+data:
+  target: demanda_mw
+  timestamp_col: timestamp
+  test_size: 0.2
+
+model:
+  name: xgboost
+  params:
+    n_estimators: 300
+    learning_rate: 0.05
+    max_depth: 6
+
+dispatch:
+  horizon_hours: 24
+  solver: cbc
