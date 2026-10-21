@@ -12,21 +12,15 @@ logging.basicConfig(
     format="%(asctime)s - [%(levelname)s] - %(message)s",
 )
 
-# Cuota de consumo por central/estación basada en los grupos tarifarios del Excel (Suma = 1.0)
-STATION_SHARES = {
-    "d8a1ce0a-873e-436f-9c1d-a2179ee2601c": 0.160,  # Palm Beach (Zona Hotelera / Gran Comercial)
-    "c3a0e9a3-36fe-4c50-8c3e-e100045b4a63": 0.145,  # Oranjestad Central (Capital Comercial/Residencial)
-    "09ea9cd3-4d28-4049-9dfb-3c5bd5849e9c": 0.115,  # Noord (Residencial y Comercial)
-    "de2ee07b-de63-49db-a669-64177a688bbf": 0.105,  # Queen Beatrix Airport (Aeropuerto y Servicios)
-    "963fdb57-b257-472d-b56e-892b265c2524": 0.095,  # San Nicolaas (Urbano e Industrial Sur)
-    "8f0185fa-a4c3-41c1-8f3b-d08f4f6aece0": 0.080,  # Malmok (Turismo Costero / Residencial)
-    "c2d4a677-28eb-494b-ad99-d4dfc110e474": 0.075,  # Santa Cruz (Residencial Central)
-    "5c5c4158-91cb-4073-ab4c-9bb10037dc16": 0.065,  # Paradera (Residencial)
-    "82a31d3a-9895-42e5-8ea0-11e8cb15b964": 0.060,  # Savaneta (Residencial Costero)
-    "4ca4c103-894d-4f59-a911-f3abb8077e3c": 0.045,  # Alto Vista (Norte Residencial)
-    "f678bd98-07d3-459d-bd4d-7aaba7051847": 0.030,  # Hooiberg Summit (Baja densidad / Telecom)
-    "acb2fa5c-518a-4a38-b68d-bf8e3b041ccf": 0.025,  # Arikok National Park (Parque / Rural)
-}
+# Cuota media del consumo de la isla cubierta por la eólica (14 %); sirve para calibrar las turbinas por parque
+CUOTA_EOLICA = 0.14
+
+# Curva de potencia de la turbina Vestas V90-3.0 MW (densidad del aire 1.225 kg/m3): viento (m/s) -> potencia (kW)
+# Arranque (cut-in) a 4 m/s, potencia nominal 3000 kW desde 15 m/s y corte (cut-out) a 25 m/s
+CURVA_POTENCIA_MS = np.array([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 25], dtype="float64")
+CURVA_POTENCIA_KW = np.array(
+    [77, 190, 353, 581, 886, 1273, 1710, 2145, 2544, 2837, 2965, 2995, 3000, 3000], dtype="float64"
+)
 
 
 def proyectar_historico_excel(excel_path: Path) -> dict:
@@ -137,42 +131,38 @@ def auditar_frecuencia_y_huecos(df: pd.DataFrame, freq: str = "5min") -> pd.Data
     return df.drop(columns=["delta_t"])
 
 
-def extrapolar_consumo_centrales(df: pd.DataFrame, monthly_proj: dict) -> pd.DataFrame:
+def extrapolar_consumo_isla(df: pd.DataFrame, monthly_proj: dict) -> pd.DataFrame:
     """
-    Extrapola el consumo eléctrico (consumo_kw) de cada central combinando:
+    Extrapola el consumo eléctrico total de la isla (consumo_isla_kw) en cada marca de tiempo combinando:
     - La proyección mensual del Excel oficial (MWh -> kW medios).
-    - La cuota tarifaria de cada estación (STATION_SHARES).
-    - Las variables meteorológicas reales del JSON (temperatura, humedad, viento) y hora UTC.
+    - La curva horaria de carga (hora UTC).
+    - La media de las variables meteorológicas de las estaciones (temperatura, humedad, viento).
+    Las estaciones son parques eólicos, así que el consumo es el mismo para todas en cada instante.
     """
-    logging.info("Extrapolando consumo eléctrico por central a partir de histórico y clima...")
-    year = df["timestamp"].dt.year
-    month = df["timestamp"].dt.month
-    days_in_month = df["timestamp"].dt.days_in_month
+    logging.info("Extrapolando consumo eléctrico de la isla a partir de histórico y clima...")
+    isla = df.groupby("timestamp")[["temperature_c", "humidity_pct", "wind_speed_kmh"]].mean()
+    ts = isla.index
 
     # 1. Potencia media total de la isla en ese mes (kW)
-    island_mwh = np.array([monthly_proj.get((y, m), 85000.0) for y, m in zip(year, month)])
-    island_avg_kw = (island_mwh * 1000.0) / (days_in_month * 24.0)
+    island_mwh = np.array([monthly_proj.get((y, m), 85000.0) for y, m in zip(ts.year, ts.month)])
+    island_avg_kw = (island_mwh * 1000.0) / (ts.days_in_month.to_numpy() * 24.0)
 
-    # 2. Asignar cuota base a cada central
-    share_estacion = df["station_id"].map(STATION_SHARES).fillna(1.0 / 12.0).to_numpy()
-    base_station_kw = island_avg_kw * share_estacion
-
-    # 3. Curva horaria normalizada (media diaria = 1.0 para conservar la energía mensual del Excel)
+    # 2. Curva horaria normalizada (media diaria = 1.0 para conservar la energía mensual del Excel)
     h_grid = np.linspace(0, 24, 288, endpoint=False)
     raw_grid = 0.78 + 0.32 * np.sin((h_grid - 7) / 24 * 2 * np.pi) ** 2 + 0.12 * np.exp(-((h_grid - 14.5) ** 2) / 10)
     norm_factor = raw_grid.mean()
 
-    horas = df["timestamp"].dt.hour + df["timestamp"].dt.minute / 60.0
+    horas = (ts.hour + ts.minute / 60.0).to_numpy()
     curva_diurna = (
         0.78
         + 0.32 * np.sin((horas - 7) / 24 * 2 * np.pi) ** 2
         + 0.12 * np.exp(-((horas - 14.5) ** 2) / 10)
     ) / norm_factor
 
-    # 4. Modulación meteorológica a partir de las mediciones reales del JSON
-    temp = df["temperature_c"].to_numpy()
-    hum = df["humidity_pct"].to_numpy()
-    wind = df["wind_speed_kmh"].to_numpy()
+    # 3. Modulación meteorológica con la media de las estaciones en cada instante
+    temp = isla["temperature_c"].to_numpy()
+    hum = isla["humidity_pct"].to_numpy()
+    wind = isla["wind_speed_kmh"].to_numpy()
 
     factor_clima = (
         1.0
@@ -182,23 +172,72 @@ def extrapolar_consumo_centrales(df: pd.DataFrame, monthly_proj: dict) -> pd.Dat
     )
     factor_clima = np.clip(factor_clima, 0.75, 1.35)
 
-    # Pequeña fluctuación estocástica proporcional al tamaño de la central
+    # Pequeña fluctuación estocástica proporcional al consumo medio
     np.random.seed(42)
-    ruido = np.random.normal(0, base_station_kw * 0.008)
+    ruido = np.random.normal(0, island_avg_kw * 0.008)
 
-    # Consumo final en kW de la central y consumo total insular sincronizado
-    df["consumo_kw"] = np.round((base_station_kw * curva_diurna * factor_clima) + ruido, 2)
-    df["consumo_isla_total_kw"] = np.round(
-        df.groupby("timestamp")["consumo_kw"].transform("sum"), 2
+    # Consumo de la isla en kW, repetido en las filas de cada estación con la misma marca de tiempo
+    consumo_isla = pd.Series(
+        np.round((island_avg_kw * curva_diurna * factor_clima) + ruido, 2), index=ts
+    )
+    df["consumo_isla_kw"] = df["timestamp"].map(consumo_isla)
+
+    logging.info(
+        f"Consumo Isla (kW) -> Media: {consumo_isla.mean():,.2f} kW | "
+        f"Mín: {consumo_isla.min():,.2f} kW | Máx: {consumo_isla.max():,.2f} kW"
+    )
+    return df
+
+
+def potencia_turbina_kw(viento_ms) -> np.ndarray:
+    """Interpola la curva de potencia de la turbina; fuera de [cut-in, cut-out] la potencia es 0 kW."""
+    viento_ms = np.asarray(viento_ms, dtype="float64")
+    potencia = np.interp(viento_ms, CURVA_POTENCIA_MS, CURVA_POTENCIA_KW)
+    fuera_rango = (viento_ms < CURVA_POTENCIA_MS[0]) | (viento_ms > CURVA_POTENCIA_MS[-1])
+    return np.where(fuera_rango, 0.0, potencia)
+
+
+def calibrar_turbinas_por_parque(df: pd.DataFrame, cuota_eolica: float = CUOTA_EOLICA) -> int:
+    """
+    Calcula cuántas turbinas necesita cada parque para que la generación eólica total cubra
+    de media `cuota_eolica` del consumo de la isla (mismo número de turbinas en todos los parques).
+    """
+    gen_una_turbina = potencia_turbina_kw(df["wind_speed_kmh"].to_numpy() / 3.6)
+    gen_total_una_turbina = pd.Series(gen_una_turbina).groupby(df["timestamp"].to_numpy()).sum().mean()
+    consumo_medio = df.drop_duplicates("timestamp")["consumo_isla_kw"].mean()
+
+    turbinas = max(1, int(round(cuota_eolica * consumo_medio / gen_total_una_turbina)))
+    logging.info(
+        f"Calibración eólica ({cuota_eolica:.0%} del consumo): {turbinas} turbinas por parque "
+        f"({turbinas * CURVA_POTENCIA_KW.max() / 1000:,.1f} MW por parque)"
+    )
+    return turbinas
+
+
+def calcular_generacion_eolica(df: pd.DataFrame, turbinas_por_parque: int) -> pd.DataFrame:
+    """
+    Calcula la generación eólica (kW) de cada parque a partir de wind_speed_kmh y su número de turbinas,
+    la generación eólica total de la isla en cada marca de tiempo y el déficit frente al consumo.
+    """
+    logging.info("Calculando generación eólica a partir de la curva de potencia de la turbina...")
+    viento_ms = df["wind_speed_kmh"].to_numpy() / 3.6
+
+    df["generacion_eolica_kw"] = np.round(potencia_turbina_kw(viento_ms) * turbinas_por_parque, 2)
+    df["generacion_eolica_total"] = np.round(
+        df.groupby("timestamp")["generacion_eolica_kw"].transform("sum"), 2
     )
 
     logging.info(
-        f"Consumo por central (kW) -> Media: {df['consumo_kw'].mean():,.2f} kW | "
-        f"Mín: {df['consumo_kw'].min():,.2f} kW | Máx: {df['consumo_kw'].max():,.2f} kW"
+        f"Generación eólica por parque (kW) -> Media: {df['generacion_eolica_kw'].mean():,.2f} kW | "
+        f"Mín: {df['generacion_eolica_kw'].min():,.2f} kW | Máx: {df['generacion_eolica_kw'].max():,.2f} kW"
     )
     logging.info(
-        f"Consumo Total Isla (suma 12 centrales) -> Media: {df['consumo_isla_total_kw'].mean():,.2f} kW"
+        f"Generación eólica total -> Media: {df['generacion_eolica_total'].mean():,.2f} kW"
     )
+
+    # Déficit (RF-03) = Consumo de la isla - Generación eólica disponible
+    if "consumo_isla_kw" in df.columns:
+        df["deficit_kw"] = np.round(df["consumo_isla_kw"] - df["generacion_eolica_total"], 2)
     return df
 def ejecutar_pipeline_ingesta(project_root: Path):
   """Orquesta todo el pipeline de ingesta y guarda los ficheros en data/interim/."""
@@ -247,7 +286,8 @@ def ejecutar_pipeline_ingesta(project_root: Path):
   df = cargar_y_unificar_origen(readings_path, stations_path)
   df = ordenar_y_limpiar_duplicados(df)
   df = auditar_frecuencia_y_huecos(df, freq="5min")
-  df = extrapolar_consumo_centrales(df, monthly_proj)
+  df = extrapolar_consumo_isla(df, monthly_proj)
+  df = calcular_generacion_eolica(df, calibrar_turbinas_por_parque(df))
 
   # 2. Crear la carpeta data/interim con ruta absoluta normalizada
   interim_dir = (project_root / "data" / "interim").resolve()
@@ -271,7 +311,10 @@ def ejecutar_pipeline_ingesta(project_root: Path):
       "precipitation_mm",
       "visibility_km",
       "uv_index",
-      "consumo_kw",
+      "consumo_isla_kw",
+      "generacion_eolica_kw",
+      "generacion_eolica_total",
+      "deficit_kw",
   ]
   df[cols_json].to_json(str(json_out), orient="records", date_format="iso", indent=2)
 

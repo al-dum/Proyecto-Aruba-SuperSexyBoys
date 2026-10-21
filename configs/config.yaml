@@ -5,7 +5,7 @@ paths:
   figures: reports/figures
 
 data:
-  target: consumo_kw
+  target: generacion_eolica_kw
   timestamp_col: timestamp
   test_size: 0.2
 
