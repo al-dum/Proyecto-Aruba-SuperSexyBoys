@@ -12,8 +12,19 @@ logging.basicConfig(
     format="%(asctime)s - [%(levelname)s] - %(message)s",
 )
 
-# Cuota media del consumo de la isla cubierta por la eólica (14 %); sirve para calibrar las turbinas por parque
-CUOTA_EOLICA = 0.14
+# Rango de la cuota media del consumo de la isla cubierta por la eólica (14-18 %); sirve para validar
+CUOTA_EOLICA_MIN = 0.14
+CUOTA_EOLICA_MAX = 0.18
+
+# Único parque eólico de la isla: Windpark Vader Piet (10 turbinas Vestas V90-3.0 MW, 30 MW)
+VADER_PIET_LAT = 12.4743
+VADER_PIET_LON = -69.8915
+TURBINAS_VADER_PIET = 10
+
+# Corrección del viento por altura (ley de potencia): las estaciones miden a ~10 m y el buje está a 80 m
+ALTURA_MEDICION_M = 10.0
+ALTURA_BUJE_M = 80.0
+ALFA_CIZALLADURA = 0.14
 
 # Curva de potencia de la turbina Vestas V90-3.0 MW (densidad del aire 1.225 kg/m3): viento (m/s) -> potencia (kW)
 # Arranque (cut-in) a 4 m/s, potencia nominal 3000 kW desde 15 m/s y corte (cut-out) a 25 m/s
@@ -197,48 +208,68 @@ def potencia_turbina_kw(viento_ms) -> np.ndarray:
     return np.where(fuera_rango, 0.0, potencia)
 
 
-def calibrar_turbinas_por_parque(df: pd.DataFrame, cuota_eolica: float = CUOTA_EOLICA) -> int:
-    """
-    Calcula cuántas turbinas necesita cada parque para que la generación eólica total cubra
-    de media `cuota_eolica` del consumo de la isla (mismo número de turbinas en todos los parques).
-    """
-    gen_una_turbina = potencia_turbina_kw(df["wind_speed_kmh"].to_numpy() / 3.6)
-    gen_total_una_turbina = pd.Series(gen_una_turbina).groupby(df["timestamp"].to_numpy()).sum().mean()
-    consumo_medio = df.drop_duplicates("timestamp")["consumo_isla_kw"].mean()
+def distancia_km(lat1, lon1, lat2, lon2) -> np.ndarray:
+    """Distancia de gran círculo (fórmula de Haversine) en km."""
+    lat1, lon1, lat2, lon2 = map(np.radians, (lat1, lon1, lat2, lon2))
+    a = np.sin((lat2 - lat1) / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin((lon2 - lon1) / 2) ** 2
+    return 6371.0 * 2 * np.arcsin(np.sqrt(a))
 
-    turbinas = max(1, int(round(cuota_eolica * consumo_medio / gen_total_una_turbina)))
+
+def calcular_viento_parque(df: pd.DataFrame, alfa: float = ALFA_CIZALLADURA) -> pd.Series:
+    """
+    Viento (m/s) a la altura del buje en Vader Piet para cada marca de tiempo: media de las estaciones
+    ponderada por la inversa de su distancia al parque y corregida por altura con la ley de potencia.
+    """
+    pesos = 1.0 / distancia_km(df["latitude"], df["longitude"], VADER_PIET_LAT, VADER_PIET_LON)
+    viento_ms = df["wind_speed_kmh"] / 3.6
+    agregado = pd.DataFrame({"timestamp": df["timestamp"], "vp": viento_ms * pesos, "p": pesos})
+    agregado = agregado.groupby("timestamp")[["vp", "p"]].sum()
+
+    factor_altura = (ALTURA_BUJE_M / ALTURA_MEDICION_M) ** alfa
+    return agregado["vp"] / agregado["p"] * factor_altura
+
+
+def calcular_generacion_eolica(
+    df: pd.DataFrame, turbinas: int = TURBINAS_VADER_PIET, alfa: float = ALFA_CIZALLADURA
+) -> pd.DataFrame:
+    """
+    Calcula la generación eólica (kW) del parque Vader Piet en cada marca de tiempo a partir del viento
+    de las estaciones cercanas (igual para todas las estaciones en un mismo timestamp) y el déficit
+    frente al consumo de la isla.
+    """
     logging.info(
-        f"Calibración eólica ({cuota_eolica:.0%} del consumo): {turbinas} turbinas por parque "
-        f"({turbinas * CURVA_POTENCIA_KW.max() / 1000:,.1f} MW por parque)"
+        f"Calculando generación eólica de Vader Piet ({turbinas} turbinas, "
+        f"{turbinas * CURVA_POTENCIA_KW.max() / 1000:,.1f} MW) con el viento de "
+        f"{df['station_id'].nunique()} estaciones..."
     )
-    return turbinas
+    viento_buje = calcular_viento_parque(df, alfa)
+    generacion = pd.Series(np.round(potencia_turbina_kw(viento_buje) * turbinas, 2), index=viento_buje.index)
 
-
-def calcular_generacion_eolica(df: pd.DataFrame, turbinas_por_parque: int) -> pd.DataFrame:
-    """
-    Calcula la generación eólica (kW) de cada parque a partir de wind_speed_kmh y su número de turbinas,
-    la generación eólica total de la isla en cada marca de tiempo y el déficit frente al consumo.
-    """
-    logging.info("Calculando generación eólica a partir de la curva de potencia de la turbina...")
-    viento_ms = df["wind_speed_kmh"].to_numpy() / 3.6
-
-    df["generacion_eolica_kw"] = np.round(potencia_turbina_kw(viento_ms) * turbinas_por_parque, 2)
-    df["generacion_eolica_total"] = np.round(
-        df.groupby("timestamp")["generacion_eolica_kw"].transform("sum"), 2
-    )
+    df["viento_buje_ms"] = np.round(df["timestamp"].map(viento_buje), 2)
+    df["generacion_eolica_kw"] = df["timestamp"].map(generacion)
 
     logging.info(
-        f"Generación eólica por parque (kW) -> Media: {df['generacion_eolica_kw'].mean():,.2f} kW | "
-        f"Mín: {df['generacion_eolica_kw'].min():,.2f} kW | Máx: {df['generacion_eolica_kw'].max():,.2f} kW"
-    )
-    logging.info(
-        f"Generación eólica total -> Media: {df['generacion_eolica_total'].mean():,.2f} kW"
+        f"Viento en el buje -> Media: {viento_buje.mean():,.2f} m/s | "
+        f"Generación eólica (kW) -> Media: {generacion.mean():,.2f} kW | "
+        f"Máx: {generacion.max():,.2f} kW | "
+        f"Factor de capacidad: {generacion.mean() / (turbinas * CURVA_POTENCIA_KW.max()):.1%}"
     )
 
     # Déficit (RF-03) = Consumo de la isla - Generación eólica disponible
     if "consumo_isla_kw" in df.columns:
-        df["deficit_kw"] = np.round(df["consumo_isla_kw"] - df["generacion_eolica_total"], 2)
+        df["deficit_kw"] = np.round(df["consumo_isla_kw"] - df["generacion_eolica_kw"], 2)
+
+        cuota = generacion.mean() / df.drop_duplicates("timestamp")["consumo_isla_kw"].mean()
+        if CUOTA_EOLICA_MIN <= cuota <= CUOTA_EOLICA_MAX:
+            logging.info(f"Cuota eólica del consumo: {cuota:.1%} (dentro del rango esperado)")
+        else:
+            logging.warning(
+                f"Cuota eólica del consumo: {cuota:.1%}, fuera del rango esperado "
+                f"({CUOTA_EOLICA_MIN:.0%}-{CUOTA_EOLICA_MAX:.0%})"
+            )
     return df
+
+
 def ejecutar_pipeline_ingesta(project_root: Path):
   """Orquesta todo el pipeline de ingesta y guarda los ficheros en data/interim/."""
   # Normalizar la ruta raíz para evitar problemas de barras en Windows/Linux
@@ -287,7 +318,7 @@ def ejecutar_pipeline_ingesta(project_root: Path):
   df = ordenar_y_limpiar_duplicados(df)
   df = auditar_frecuencia_y_huecos(df, freq="5min")
   df = extrapolar_consumo_isla(df, monthly_proj)
-  df = calcular_generacion_eolica(df, calibrar_turbinas_por_parque(df))
+  df = calcular_generacion_eolica(df)
 
   # 2. Crear la carpeta data/interim con ruta absoluta normalizada
   interim_dir = (project_root / "data" / "interim").resolve()
@@ -312,8 +343,8 @@ def ejecutar_pipeline_ingesta(project_root: Path):
       "visibility_km",
       "uv_index",
       "consumo_isla_kw",
+      "viento_buje_ms",
       "generacion_eolica_kw",
-      "generacion_eolica_total",
       "deficit_kw",
   ]
   df[cols_json].to_json(str(json_out), orient="records", date_format="iso", indent=2)
