@@ -1,4 +1,4 @@
-from pathlib import Path
+import os
 import re
 from copy import copy
 
@@ -9,9 +9,9 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 
-ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "data/external/Table-3.8-Energy-consumption-per-month-in-KwH-by-tariff-group-2015-2024rev.xlsx"
-OUTPUT = ROOT / "data/processed/external/energy_consumption_2015_2024_clean.xlsx"
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+SOURCE = os.path.join(ROOT, "data/external/Table-3.8-Energy-consumption-per-month-in-KwH-by-tariff-group-2015-2024rev.xlsx")
+OUTPUT = os.path.join(ROOT, "data/processed/external/energy_consumption_2015_2024_clean.xlsx")
 
 TARIFFS = [
     "Residential",
@@ -252,7 +252,7 @@ def main():
     wb.calculation.fullCalcOnLoad = True
     wb.calculation.forceFullCalc = True
     wb.calculation.calcMode = "auto"
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
     wb.save(OUTPUT)
     print(OUTPUT)
 
