@@ -1,4 +1,4 @@
-"""Pipeline de datos meteorológicos de Aruba (notebooks 0 a 4 en un único script)"""
+"""Pipeline de datos meteorológicos de Aruba (notebooks 0 a 4 y consumo insular estimado)"""
 import json
 import os
 import sys
@@ -8,6 +8,9 @@ import pandas as pd
 ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
+from energy_dispatch.data.consumption import (  # noqa: E402  pylint: disable=wrong-import-position
+    WEATHER_COLUMNS, estimate_island_consumption, project_monthly_consumption,
+)
 from energy_dispatch.features.build import add_lag_features  # noqa: E402  pylint: disable=wrong-import-position
 
 
@@ -36,6 +39,13 @@ THRESHOLDS_JSON_PATH = os.path.join(THRESHOLDS_DIR, "aruba_readings_with_securit
 LAGS_DIR = os.path.join(PROCESSED_DIR, "4_eolic_lag_features")
 LAGS_CSV_PATH = os.path.join(LAGS_DIR, "aruba_readings_with_eolic_lags.csv")
 LAGS_JSON_PATH = os.path.join(LAGS_DIR, "aruba_readings_with_eolic_lags.json")
+
+CONSUMPTION_EXCEL_PATH = os.path.join(
+    ROOT, "data/external/Table-3.8-Energy-consumption-per-month-in-KwH-by-tariff-group-2015-2024rev.xlsx"
+)
+CONSUMPTION_DIR = os.path.join(PROCESSED_DIR, "5_island_consumption")
+CONSUMPTION_CSV_PATH = os.path.join(CONSUMPTION_DIR, "aruba_readings_with_consumption.csv")
+CONSUMPTION_JSON_PATH = os.path.join(CONSUMPTION_DIR, "aruba_readings_with_consumption.json")
 
 # Paso 0: limpieza
 ID_COLUMNS = ["id", "station_id", "timestamp"]
@@ -336,13 +346,45 @@ def step_4_eolic_lag_features() -> pd.DataFrame:
     return model_df
 
 
+def step_5_island_consumption() -> pd.DataFrame:
+    """Añade `consumo_isla_kw`: consumo total de la isla estimado (modelado, no medido)."""
+    print("\n=== Paso 5: consumo eléctrico estimado de la isla ===")
+    df = pd.read_csv(LAGS_CSV_PATH)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+
+    # Clima medio de la isla con las 12 estaciones limpias, no solo las del parque.
+    readings = pd.read_csv(CLEAN_CSV_PATH, usecols=["timestamp", *WEATHER_COLUMNS])
+    readings["timestamp"] = pd.to_datetime(readings["timestamp"], utc=True)
+    island_weather = readings.groupby("timestamp", as_index=False)[WEATHER_COLUMNS].mean()
+
+    years = sorted(island_weather["timestamp"].dt.tz_convert("America/Aruba").dt.year.unique())
+    monthly_mwh = project_monthly_consumption(CONSUMPTION_EXCEL_PATH, years)
+    consumption = estimate_island_consumption(island_weather, monthly_mwh)
+
+    df = df.merge(consumption, left_on="timestamp", right_index=True,
+                  how="left", validate="many_to_one")
+    print(f'Filas sin consumo: {int(df["consumo_isla_kw"].isna().sum()):,}')
+    print(f"Consumo isla -> media {consumption.mean() / 1000:,.1f} MW | "
+          f"mín {consumption.min() / 1000:,.1f} MW | máx {consumption.max() / 1000:,.1f} MW | "
+          f"pico/media {consumption.max() / consumption.mean():.3f}")
+    share = (df["generacion_eolica_kw"] / df["consumo_isla_kw"]).mean()
+    print(f"Cobertura eólica media del parque: {share:.1%}")
+
+    os.makedirs(CONSUMPTION_DIR, exist_ok=True)
+    df.to_csv(CONSUMPTION_CSV_PATH, index=False)
+    df.to_json(CONSUMPTION_JSON_PATH, orient="records", indent=2,
+               force_ascii=False, date_format="iso")
+    return df
+
+
 def main() -> None:
     step_0_clean_readings()
     step_1_filter_stations()
     step_2_filter_readings()
     step_3_security_thresholds()
     step_4_eolic_lag_features()
-    print(f"\nPipeline completado. Tabla para el modelo: {LAGS_CSV_PATH}")
+    step_5_island_consumption()
+    print(f"\nPipeline completado. Tabla para el modelo: {CONSUMPTION_CSV_PATH}")
 
 
 if __name__ == "__main__":
