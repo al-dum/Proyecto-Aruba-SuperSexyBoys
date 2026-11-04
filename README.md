@@ -42,6 +42,31 @@ python main.py --config configs/config.yaml
 pytest
 ```
 
+## Pipeline de datos
+
+`scripts/run_data_pipeline.py` ejecuta en orden los pasos prototipados en los
+notebooks `0` a `4`:
+
+| Paso | Notebook | Salida en `data/processed/` |
+|---|---|---|
+| 0. Limpieza y auditoría de lecturas | `0_data_cleaning.ipynb` | `0_cleaning/` |
+| 1. Selección de las 3 estaciones más cercanas | `1_filter_stations.ipynb` | `1_station_filtering/` |
+| 2. Filtrado de lecturas por estación | `2_data_validation.ipynb` | `2_data_validation/` |
+| 3. Umbrales de seguridad eólica (`wind_alert`) | `3_calculate_security_umbrals.ipynb` | `3_security_thresholds/` |
+| 4. Generación eólica y variables lag | `4_eolic_generation_lag_features.ipynb` | `4_eolic_lag_features/` |
+
+Requiere `data/raw/aruba_stations.json` y
+`data/raw/readings/aruba_readings_20260924.json`. Con el entorno activado, se
+puede lanzar desde cualquier directorio:
+
+```bash
+python scripts/run_data_pipeline.py
+```
+
+Las carpetas de salida se crean si no existen y los ficheros previos se
+sobrescriben. La tabla final para el modelo queda en
+`data/processed/4_eolic_lag_features/aruba_readings_with_eolic_lags.csv`.
+
 ## Metodología
 
 Ver [`docs/METODOLOGIA.md`](docs/METODOLOGIA.md): flujo de trabajo desde datos
