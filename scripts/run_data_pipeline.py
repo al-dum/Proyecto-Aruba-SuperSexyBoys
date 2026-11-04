@@ -347,7 +347,7 @@ def step_4_eolic_lag_features() -> pd.DataFrame:
 
 
 def step_5_island_consumption() -> pd.DataFrame:
-    """Añade `consumo_isla_kw`: consumo total de la isla estimado (modelado, no medido)."""
+    """Añade `consumo_estimado_isla_kw`: consumo total de la isla estimado (modelado, no medido)."""
     print("\n=== Paso 5: consumo eléctrico estimado de la isla ===")
     df = pd.read_csv(LAGS_CSV_PATH)
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
@@ -363,11 +363,11 @@ def step_5_island_consumption() -> pd.DataFrame:
 
     df = df.merge(consumption, left_on="timestamp", right_index=True,
                   how="left", validate="many_to_one")
-    print(f'Filas sin consumo: {int(df["consumo_isla_kw"].isna().sum()):,}')
+    print(f'Filas sin consumo: {int(df["consumo_estimado_isla_kw"].isna().sum()):,}')
     print(f"Consumo isla -> media {consumption.mean() / 1000:,.1f} MW | "
           f"mín {consumption.min() / 1000:,.1f} MW | máx {consumption.max() / 1000:,.1f} MW | "
           f"pico/media {consumption.max() / consumption.mean():.3f}")
-    share = (df["generacion_eolica_kw"] / df["consumo_isla_kw"]).mean()
+    share = (df["generacion_eolica_kw"] / df["consumo_estimado_isla_kw"]).mean()
     print(f"Cobertura eólica media del parque: {share:.1%}")
 
     os.makedirs(CONSUMPTION_DIR, exist_ok=True)

@@ -91,7 +91,7 @@ def _ar1_noise(n: int, phi: float, sigma: float, rng: np.random.Generator) -> np
 
 def estimate_island_consumption(weather: pd.DataFrame, monthly_mwh: dict,
                                 seed: int = 42) -> pd.Series:
-    """Devuelve `consumo_isla_kw` indexado por timestamp (UTC).
+    """Devuelve `consumo_estimado_isla_kw` indexado por timestamp (UTC).
 
     `weather` debe tener una fila por timestamp con `timestamp` (tz-aware) y las
     columnas de `WEATHER_COLUMNS`, típicamente la media de todas las estaciones.
@@ -140,4 +140,4 @@ def estimate_island_consumption(weather: pd.DataFrame, monthly_mwh: dict,
     k = brentq(lambda k: (month_mean + k * deviation).max() - target_peak, 0.0, 20.0)
     calibrated = month_mean + k * deviation
 
-    return calibrated.round(2).rename("consumo_isla_kw")
+    return calibrated.round(2).rename("consumo_estimado_isla_kw")
