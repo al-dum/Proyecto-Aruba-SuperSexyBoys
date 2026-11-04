@@ -13,3 +13,5 @@ joblib
 pytest
 ruff
 jupyter
+holidays
+openpyxl

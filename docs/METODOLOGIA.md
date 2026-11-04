@@ -94,6 +94,12 @@ congela en `features/build.py`. Típicas en demanda energética:
 - Temperatura (si se tiene) — suele ser la variable más potente
 - Codificación cíclica de hora/mes (`sin`/`cos`), mejor que hora como entero plano
 
+> **Ojo:** `consumo_estimado_isla_kw` (paso 5 del pipeline) no es una medición. Se modela en
+> `data/consumption.py` a partir de los totales mensuales del CBS (Tabla 3.8), un perfil
+> diario en hora local de Aruba, el clima real, los festivos y ruido AR(1), y se calibra
+> a la relación pico/media publicada por WEB Aruba (172/121 MW, 2026). Un modelo que lo
+> prediga mide lo bien que reproduce esa estimación, no la demanda real.
+
 ## 7. Split temporal — no aleatorio
 
 **Nunca** usar `train_test_split` aleatorio en series temporales — filtra
