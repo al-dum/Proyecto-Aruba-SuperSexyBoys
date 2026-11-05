@@ -10,7 +10,7 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-SOURCE = os.path.join(ROOT, "data/external/Table-3.8-Energy-consumption-per-month-in-KwH-by-tariff-group-2015-2024rev.xlsx")
+SOURCE = os.path.join(ROOT, "data/external/aruba_energy_consumption_2015_2024.xlsx")
 OUTPUT = os.path.join(ROOT, "data/processed/external/energy_consumption_2015_2024_clean.xlsx")
 
 TARIFFS = [

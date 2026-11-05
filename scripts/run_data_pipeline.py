@@ -41,7 +41,7 @@ LAGS_CSV_PATH = os.path.join(LAGS_DIR, "aruba_readings_with_eolic_lags.csv")
 LAGS_JSON_PATH = os.path.join(LAGS_DIR, "aruba_readings_with_eolic_lags.json")
 
 CONSUMPTION_EXCEL_PATH = os.path.join(
-    ROOT, "data/external/Table-3.8-Energy-consumption-per-month-in-KwH-by-tariff-group-2015-2024rev.xlsx"
+    ROOT, "data/external/aruba_energy_consumption_2015_2024.xlsx"
 )
 CONSUMPTION_DIR = os.path.join(PROCESSED_DIR, "5_island_consumption")
 CONSUMPTION_CSV_PATH = os.path.join(CONSUMPTION_DIR, "aruba_readings_with_consumption.csv")
@@ -235,7 +235,7 @@ def step_2_filter_readings() -> pd.DataFrame:
     )
     os.makedirs(VALIDATION_DIR, exist_ok=True)
     filtered.to_csv(FILTERED_CSV_PATH, index=False)
-    filtered.to_json(FILTERED_JSON_PATH)
+    filtered.to_json(FILTERED_JSON_PATH, date_format="iso")
     print(f"Lecturas filtradas: {len(filtered):,}")
     return filtered
 
@@ -280,7 +280,8 @@ def step_3_security_thresholds() -> pd.DataFrame:
 
     os.makedirs(THRESHOLDS_DIR, exist_ok=True)
     df.to_csv(THRESHOLDS_CSV_PATH, index=False)
-    df.to_json(THRESHOLDS_JSON_PATH, orient="records", indent=2, force_ascii=False)
+    df.to_json(THRESHOLDS_JSON_PATH, orient="records", indent=2,
+               force_ascii=False, date_format="iso")
     return df
 
 
