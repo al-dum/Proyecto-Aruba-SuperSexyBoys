@@ -58,7 +58,8 @@ notebooks `0` a `4` y añade el consumo estimado de la isla:
 
 Requiere `data/raw/aruba_stations.json`,
 `data/raw/readings/aruba_readings_20260924.json` y, para el paso 5, el Excel del
-CBS `data/external/Table-3.8-Energy-consumption-per-month-in-KwH-by-tariff-group-2015-2024rev.xlsx`. Con el entorno activado, se
+CBS `data/external/aruba_energy_consumption_2015_2024.xlsx` (tabla original del CBS:
+`Table-3.8-Energy-consumption-per-month-in-KwH-by-tariff-group-2015-2024rev.xlsx`). Con el entorno activado, se
 puede lanzar desde cualquier directorio:
 
 ```bash
