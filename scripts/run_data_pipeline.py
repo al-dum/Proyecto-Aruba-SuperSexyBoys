@@ -311,8 +311,9 @@ def step_4_eolic_lag_features() -> pd.DataFrame:
         .eval("weighted_wind / weight")
     )
 
-    # Curva simplificada Vestas V90-3.0 MW: 10 turbinas, buje a 80 m y 10 % de pérdidas.
-    wind_hub_ms = wind_at_park.div(3.6) * (80 / 10) ** 0.14
+    # Curva simplificada Vestas V90-3.0 MW: 10 turbinas y 10 % de pérdidas. Sin corrección de
+    # altura: el viento de las estaciones se usa directamente (docs/umbrales-seguridad-aruba.md).
+    wind_hub_ms = wind_at_park.div(3.6)
     curve_ms = np.array([0, 4, 6, 8, 10, 12, 15, 25])
     curve_kw = np.array([0, 97, 414, 944, 1668, 2447, 3000, 3000])
     power_per_turbine = np.interp(wind_hub_ms, curve_ms, curve_kw)
