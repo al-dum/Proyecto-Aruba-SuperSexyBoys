@@ -110,7 +110,7 @@ def estimate_island_consumption(weather: pd.DataFrame, monthly_mwh: dict,
 
     # 2. Perfil diario; los festivos de Aruba se tratan como domingo.
     festivos = holidays.country_holidays("AW", years=sorted(set(year.tolist())))
-    day_off = (local.dt.dayofweek >= 5).to_numpy() | local.dt.date.isin(festivos).to_numpy()
+    day_off = (local.dt.day_of_week >= 5).to_numpy() | local.dt.date.isin(festivos).to_numpy()
     local_hour = (local.dt.hour + local.dt.minute / 60.0).to_numpy()
     curve = _daily_curve(local_hour, day_off)
 
