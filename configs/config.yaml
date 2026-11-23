@@ -3,18 +3,47 @@ paths:
   processed: data/processed
   models: models
   figures: reports/figures
+  reports: reports
 
 data:
-  target: demanda_mw
+  # Salidas de los pasos 1 y 2 de scripts/run_data_pipeline.py
+  readings: data/processed/2_data_validation/aruba_reading_filtered_by_station_distance.csv
+  stations: data/processed/1_station_filtering/aruba_stations_ordered_by_distance_m.json
+  target: generacion_eolica_kw
   timestamp_col: timestamp
+  freq: 5min
+  # Fracción FINAL de la serie que se reserva para test (split temporal, nunca aleatorio).
   test_size: 0.2
 
+forecast:
+  # Horizonte en pasos de 5 min: 12 = 1 h vista. scripts/train_wind_model.py --horizons
+  # permite evaluar varios (p. ej. 1 12 72 288 = 5 min, 1 h, 6 h, 24 h).
+  horizon_steps: 12
+
+# Modelos de referencia que el modelo principal debe batir (docs/METODOLOGIA.md §8).
+baselines:
+  - persistence      # viento futuro = viento actual
+  - seasonal_naive   # viento futuro = mismo instante del día anterior
+  - hourly_mean      # media de train por hora local
+  - linear           # regresión lineal con las mismas features
+
 model:
-  name: xgboost
+  name: hist_gradient_boosting
   params:
-    n_estimators: 300
+    # absolute_error (mediana) y árboles poco profundos: la serie tiene ráfagas aisladas
+    # (>35 km/h) y con squared_error + max_depth 6 el modelo las perseguía, sobreajustaba
+    # y sesgaba el pronóstico al alza a 6 h y 24 h (ver docs/MODELO_GRADIENT_BOOSTING.md).
+    loss: absolute_error
+    max_iter: 200
     learning_rate: 0.05
-    max_depth: 6
+    max_depth: 3
+    min_samples_leaf: 200
+    # Para un pronóstico conservador (sobrestimar viento es lo caro en el despacho):
+    # loss: quantile
+    # quantile: 0.3
+    random_state: 42
+  # Validación cruzada temporal (TimeSeriesSplit con gap = horizonte) sobre train.
+  cv_splits: 5
 
 dispatch:
   horizon_hours: 24

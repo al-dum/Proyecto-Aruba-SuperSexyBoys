@@ -12,6 +12,9 @@ from energy_dispatch.data.consumption import (  # noqa: E402  pylint: disable=wr
     WEATHER_COLUMNS, estimate_island_consumption, project_monthly_consumption,
 )
 from energy_dispatch.features.build import add_lag_features  # noqa: E402  pylint: disable=wrong-import-position
+from energy_dispatch.features.wind import (  # noqa: E402  pylint: disable=wrong-import-position
+    park_wind_kmh, wind_kmh_to_power_kw,
+)
 
 
 RAW_DIR = os.path.join(ROOT, "data/raw")
@@ -301,24 +304,12 @@ def step_4_eolic_lag_features() -> pd.DataFrame:
         raise ValueError("Las lecturas no corresponden a las estaciones seleccionadas. "
                          "Ejecuta de nuevo los pasos 2 y 3.")
 
-    # Viento en el parque: media ponderada por inverso de la distancia.
-    weights = 1 / nearby_stations.set_index("id")["distance_m"]
-    weather = df[df["station_id"].isin(weights.index)].copy()
-    weather["weight"] = weather["station_id"].map(weights)
-    wind_at_park = (
-        weather.assign(weighted_wind=weather["wind_speed_kmh"] * weather["weight"])
-        .groupby("timestamp")[["weighted_wind", "weight"]].sum()
-        .eval("weighted_wind / weight")
-    )
-
-    # Curva simplificada Vestas V90-3.0 MW: 10 turbinas y 10 % de pérdidas. Sin corrección de
-    # altura: el viento de las estaciones se usa directamente (docs/umbrales-seguridad-aruba.md).
-    wind_hub_ms = wind_at_park.div(3.6)
-    curve_ms = np.array([0, 4, 6, 8, 10, 12, 15, 25])
-    curve_kw = np.array([0, 97, 414, 944, 1668, 2447, 3000, 3000])
-    power_per_turbine = np.interp(wind_hub_ms, curve_ms, curve_kw)
-    power_per_turbine[(wind_hub_ms < CUT_IN_MS) | (wind_hub_ms >= CUT_OUT_MS)] = 0
-    generation = pd.Series(power_per_turbine * N_TURBINES * 0.90,
+    # Viento en el parque (media ponderada por inverso de la distancia) y curva simplificada
+    # V90-3.0 MW: 10 turbinas y 10 % de pérdidas. Sin corrección de altura: el viento de las
+    # estaciones se usa directamente (docs/umbrales-seguridad-aruba.md). La lógica vive en
+    # energy_dispatch.features.wind para que el modelo use exactamente la misma conversión.
+    wind_at_park = park_wind_kmh(df, nearby_stations)
+    generation = pd.Series(wind_kmh_to_power_kw(wind_at_park),
                            index=wind_at_park.index, name="generacion_eolica_kw")
     df = df.merge(generation, left_on="timestamp", right_index=True,
                   how="left", validate="many_to_one")
