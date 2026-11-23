@@ -41,9 +41,3 @@ pip install -e .
 python main.py --config configs/config.yaml
 pytest
 ```
-
-## Metodología
-
-Ver [`docs/METODOLOGIA.md`](docs/METODOLOGIA.md): flujo de trabajo desde datos
-crudos (auditoría, limpieza, validación) hasta modelo en producción conectado al
-despacho.

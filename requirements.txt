@@ -1,15 +1,12 @@
 numpy
 pandas
 scikit-learn
-xgboost
-lightgbm
 scipy
-pulp            # optimización del despacho (LP/MILP)
-matplotlib
-seaborn
 pyyaml
 streamlit
 joblib
 pytest
 ruff
 jupyter
+holidays
+openpyxl

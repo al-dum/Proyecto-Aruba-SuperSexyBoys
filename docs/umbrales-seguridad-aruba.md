@@ -13,7 +13,6 @@ El diseño de estos umbrales responde directamente a la vulnerabilidad del siste
 | :--- | :--- | :--- | :--- | :--- |
 | `temperature_c` (°C) | 27.3 °C – 29.5 °C | > 30.3 °C | > 33.0 °C | Disparo de demanda por A/C (~50% del total) y picos de carga en red [15, 109, 141]. |
 | `humidity_pct` (%) | 65% – 75% | > 80% | > 90% | Incremento de sensación térmica y aceleración de corrosión salina en aisladores y turbinas [9, 105]. |
-| `wind_speed_kmh` (km/h) | 20 km/h – 35 km/h (~27.4 km/h) | < 25 km/h | < 15 km/h ó > 65–80 km/h | Déficit eólico (Vader Piet 30 MW) / Desconexión por *cut-out* en vientos extremos [138, 168]. |
 | `wind_direction_deg` (°) | 80° – 110° (Alisios del E/ENE) | < 60° ó > 120° | < 40° ó > 140° | *Wind Reversal* (reversión del viento), indicador de sistemas ciclónicos o tormentas [128]. |
 | `pressure_hpa` (hPa) | 1013 – 1016 hPa | < 1008 hPa | < 1000 – 1004 hPa | Inestabilidad barométrica y aproximación de depresión/tormenta tropical [96]. |
 | `precipitation_mm` (mm/h) | 0.0 mm/h | > 5.0 mm/h | > 25.0 mm/h | Caída de generación solar por sombreado / Inundación repentina en infraestructura eléctrica [96]. |
@@ -39,10 +38,6 @@ El diseño de estos umbrales responde directamente a la vulnerabilidad del siste
 ---
 
 ### 2.3. `wind_speed_kmh` (Velocidad del Viento en km/h)
-* **Línea de Base Promedio:** El viento medio en Aruba es constante, promediando **7.6 m/s (~27.4 km/h)** movido por los vientos alisios continuos [97, 117].
-* **Umbral Crítico por Déficit Eólico (< 15 km/h / ~4.1 m/s):** Corresponde a niveles donde la generación del Parque Eólico Vader Piet (30 MW) cae por debajo del **15% de su capacidad nominal** (alrededor de 4,5 MW) [168]. A esta velocidad, las turbinas operan cerca de su límite inferior de arranque (*cut-in speed*), reduciendo bruscamente la inyección de energía limpia [168]. Para evitar fluctuaciones de frecuencia en la red de 60 Hz, el Gemelo Digital debe emitir una orden previa de **despacho térmico del 100%** para arrancar los motores recíprocos fijos de WEB Aruba (RECIP I–IV) [48, 168].
-* **Umbral Moderado por Déficit (< 25 km/h / ~6.9 m/s):** La producción eólica se ubica entre el 15% y el 40% de su capacidad [168]. Se requiere compensación dinámica mediante almacenamiento en baterías (BESS) o rampa fotovoltaica [148, 182].
-* **Umbral Crítico por Viento Extremo / Desconexión (> 65–80 km/h / > 18–22 m/s):** Velocidades de viento que se aproximan a la velocidad de corte mecánico (*cut-out*) de las palas eólicas. Las turbinas frenan automáticamente por protección, generando un evento de *ramp-down* masivo y repentino que requiere el soporte inmediato de sistemas de inercia o flywheels [22, 148].
 
 ---
 
