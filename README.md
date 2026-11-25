@@ -82,3 +82,26 @@ ruido AR(1). Después se calibra a la relación pico/media de WEB Aruba
 Ver [`docs/METODOLOGIA.md`](docs/METODOLOGIA.md): flujo de trabajo desde datos
 crudos (auditoría, limpieza, validación) hasta modelo en producción conectado al
 despacho.
+
+## EDA antes del entrenamiento
+
+Con el dataset final disponible, abrir y ejecutar en orden
+[`notebooks/5_eda_notebook.ipynb`](notebooks/5_eda_notebook.ipynb):
+
+```bash
+jupyter lab notebooks/5_eda_notebook.ipynb
+```
+
+El notebook incluye estadísticas, continuidad, distribuciones, anomalías, perfiles
+en hora de Aruba, correlaciones y redundancia. Comprueba que generación y consumo
+son señales insulares repetidas entre estaciones y prepara una fila por instante,
+objetivos a **t+15 minutos** y retardos de consumo.
+
+Reserva cortes cronológicos 60/20/20; el EDA usa solo entrenamiento y excluye las
+etiquetas futuras que alcancen el siguiente bloque. Las tablas y figuras quedan en
+el notebook: no sobrescribe datasets ni entrena modelos. La preparación temporal
+reutilizable se encuentra en `src/energy_dispatch/features/build.py`.
+
+Ambas señales eléctricas son estimadas. En particular, el consumo se calibra
+retrospectivamente con periodos completos: este análisis permite desarrollar una
+simulación académica, no acreditar un predictor de demanda real en producción.
