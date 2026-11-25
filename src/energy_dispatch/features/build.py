@@ -1,6 +1,34 @@
 import pandas as pd
 
 
+def add_exact_time_features(
+    df: pd.DataFrame,
+    value_col: str,
+    offsets: dict[str, str | pd.Timedelta],
+    timestamp_col: str = "timestamp",
+) -> pd.DataFrame:
+    """Busca valores a distancias temporales exactas en una serie única.
+
+    Un offset positivo consulta el futuro (objetivo); uno negativo consulta el
+    pasado (retardo). No interpola ni confunde filas con minutos. La entrada debe
+    tener una sola fila por instante: agregar o separar estaciones previamente.
+    """
+    timestamps = pd.to_datetime(df[timestamp_col], utc=True)
+    if timestamps.isna().any():
+        raise ValueError("Los timestamps no pueden contener valores ausentes.")
+    if timestamps.duplicated().any():
+        raise ValueError("Se requiere una sola fila por timestamp.")
+    if set(offsets).intersection(df.columns):
+        raise ValueError("Las columnas temporales nuevas no pueden sobrescribir otras.")
+
+    values = pd.Series(df[value_col].to_numpy(), index=pd.DatetimeIndex(timestamps))
+    out = df.copy()
+    for name, offset in offsets.items():
+        requested_times = pd.DatetimeIndex(timestamps + pd.Timedelta(offset))
+        out[name] = values.reindex(requested_times).to_numpy()
+    return out
+
+
 def add_time_features(df: pd.DataFrame, timestamp_col: str = "timestamp") -> pd.DataFrame:
     ts = df[timestamp_col]
     return df.assign(hour=ts.dt.hour, dayofweek=ts.dt.day_of_week, month=ts.dt.month)
