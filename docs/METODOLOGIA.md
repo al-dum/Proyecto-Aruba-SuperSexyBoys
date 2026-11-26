@@ -80,31 +80,8 @@ nuevos, `pytest` dice en segundos si algo se rompió.
 - Relación con variables externas (temperatura, festivos, día de la semana).
 - Estacionariedad si se van a usar modelos de series temporales clásicos.
 
-Se realiza en [`notebooks/5_eda_notebook.ipynb`](../notebooks/5_eda_notebook.ipynb).
-Incluye estadísticas, rangos físicos, candidatos a outliers, anomalías marcadas,
-comparación entre estaciones, huecos de calendario, perfiles locales, dependencia
-temporal y correlaciones Pearson/Spearman con las respuestas a t+15 minutos.
-Aquí se proponen variables para probar, no se seleccionan automáticamente por
-umbrales de correlación.
-
-El notebook comprueba que generación, consumo y retardos eólicos están repetidos
-entre estaciones y conserva una fila por instante. La meteorología se compara
-por estación y su media simultánea se utiliza como primera representación
-candidata; la dirección del viento se representa mediante seno y coseno.
-La agregación de tres estaciones no es una nueva medición ni reproduce
-necesariamente las ponderaciones usadas para generar las señales eléctricas.
-
-Se fijan cortes por timestamp único: 60 % entrenamiento, 20 % validación y 20 %
-prueba, con los dos primeros bloques formando el 80 % de desarrollo. Las gráficas
-y decisiones exploratorias usan solo entrenamiento. Los objetivos se buscan por
-fecha exacta, sin cruzar huecos por desplazamiento de filas; al separar bloques
-se excluyen las filas cuya etiqueta futura alcance el siguiente periodo.
-Las gráficas mantienen los huecos como ausencias, sin interpolarlos.
-
-Las tablas, figuras y conclusiones se conservan en el notebook. No se entrenan
-modelos ni se sobrescriben datasets en esta fase. No es obligatorio aplicar todos
-los métodos del manual: escalado y VIF dependen del modelo, y los retardos
-correlacionados se comparan mediante validación antes de descartarlos.
+Sigue en notebook (`notebooks/02_eda.ipynb`); aquí se decide qué features tienen
+sentido probar.
 
 ## 6. Features — de la hipótesis al código
 
@@ -122,10 +99,6 @@ congela en `features/build.py`. Típicas en demanda energética:
 > diario en hora local de Aruba, el clima real, los festivos y ruido AR(1), y se calibra
 > a la relación pico/media publicada por WEB Aruba (172/121 MW, 2026). Un modelo que lo
 > prediga mide lo bien que reproduce esa estimación, no la demanda real.
->
-> Además, la normalización mensual y la calibración global usan periodos completos.
-> El consumo actual del CSV es retrospectivo, no una entrada operativa causal.
-> Una partición temporal correcta no elimina esa limitación de la simulación.
 
 ## 7. Split temporal — no aleatorio
 
