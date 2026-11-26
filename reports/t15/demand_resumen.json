@@ -1,0 +1,62 @@
+{
+  "problem": "demand",
+  "gb_params": {
+    "learning_rate": 0.03,
+    "max_iter": 200,
+    "max_leaf_nodes": 15,
+    "min_samples_leaf": 200,
+    "loss": "absolute_error"
+  },
+  "n_dev": 20957,
+  "n_test": 5241,
+  "model_path": "models/gb_t15_demand.pkl",
+  "figures": [
+    "reports/figures/t15_demand_real_vs_predicho.png",
+    "reports/figures/t15_demand_error_por_hora.png",
+    "reports/figures/t15_demand_residuos.png"
+  ],
+  "test": {
+    "gradient_boosting": {
+      "mae_kw": 625.4895,
+      "rmse_kw": 787.5775,
+      "r2": 0.9979,
+      "sesgo_kw": -36.6425,
+      "mape_pct": 0.5208
+    },
+    "ridge": {
+      "mae_kw": 717.3193,
+      "rmse_kw": 909.2083,
+      "r2": 0.9972,
+      "sesgo_kw": 0.6388,
+      "mape_pct": 0.5944
+    },
+    "persistencia": {
+      "mae_kw": 1298.757,
+      "rmse_kw": 1621.7109,
+      "r2": 0.9912,
+      "sesgo_kw": -5.6839,
+      "mape_pct": 1.0843
+    },
+    "naive_estacional": {
+      "mae_kw": 5319.8473,
+      "rmse_kw": 6737.7216,
+      "r2": 0.8486,
+      "sesgo_kw": -238.5075,
+      "mape_pct": 4.4433
+    },
+    "media_por_hora": {
+      "mae_kw": 6140.5931,
+      "rmse_kw": 7329.9171,
+      "r2": 0.8208,
+      "sesgo_kw": -5101.6479,
+      "mape_pct": 4.9772
+    },
+    "media_train": {
+      "mae_kw": 15681.7093,
+      "rmse_kw": 18089.6701,
+      "r2": -0.0917,
+      "sesgo_kw": -5242.4773,
+      "mape_pct": 12.9637
+    }
+  }
+}

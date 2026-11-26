@@ -1,0 +1,62 @@
+{
+  "problem": "wind",
+  "gb_params": {
+    "learning_rate": 0.03,
+    "max_iter": 500,
+    "max_leaf_nodes": 7,
+    "min_samples_leaf": 50,
+    "loss": "absolute_error"
+  },
+  "n_dev": 20957,
+  "n_test": 5241,
+  "model_path": "models/gb_t15_wind.pkl",
+  "figures": [
+    "reports/figures/t15_wind_real_vs_predicho.png",
+    "reports/figures/t15_wind_error_por_hora.png",
+    "reports/figures/t15_wind_residuos.png"
+  ],
+  "test": {
+    "ridge": {
+      "mae_kw": 76.6341,
+      "rmse_kw": 128.8311,
+      "r2": 0.992,
+      "sesgo_kw": -2.8734,
+      "mae_kmh": 0.1255
+    },
+    "gradient_boosting": {
+      "mae_kw": 79.0003,
+      "rmse_kw": 129.7559,
+      "r2": 0.9919,
+      "sesgo_kw": 6.7686,
+      "mae_kmh": 0.1286
+    },
+    "persistencia": {
+      "mae_kw": 104.3027,
+      "rmse_kw": 157.1547,
+      "r2": 0.9882,
+      "sesgo_kw": -0.4963,
+      "mae_kmh": 0.1688
+    },
+    "media_por_hora": {
+      "mae_kw": 416.1505,
+      "rmse_kw": 611.2746,
+      "r2": 0.821,
+      "sesgo_kw": 81.3639,
+      "mae_kmh": 0.7047
+    },
+    "naive_estacional": {
+      "mae_kw": 582.253,
+      "rmse_kw": 847.2989,
+      "r2": 0.656,
+      "sesgo_kw": 6.2653,
+      "mae_kmh": 0.976
+    },
+    "media_train": {
+      "mae_kw": 1267.4492,
+      "rmse_kw": 1447.0471,
+      "r2": -0.0032,
+      "sesgo_kw": 82.268,
+      "mae_kmh": 1.9964
+    }
+  }
+}
