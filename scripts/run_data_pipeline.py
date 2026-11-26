@@ -50,6 +50,10 @@ CONSUMPTION_DIR = os.path.join(PROCESSED_DIR, "5_island_consumption")
 CONSUMPTION_CSV_PATH = os.path.join(CONSUMPTION_DIR, "aruba_readings_with_consumption.csv")
 CONSUMPTION_JSON_PATH = os.path.join(CONSUMPTION_DIR, "aruba_readings_with_consumption.json")
 
+# Notebooks que se ejecutan al final, en este orden (los 0-4 son los pasos de arriba).
+NOTEBOOKS_DIR = os.path.join(ROOT, "notebooks")
+NOTEBOOKS = ["5_eda_notebook.ipynb", "6_train_t15.ipynb"]
+
 # Paso 0: limpieza
 ID_COLUMNS = ["id", "station_id", "timestamp"]
 NUMERIC_COLUMNS = [
@@ -88,8 +92,6 @@ N_NEAREST_STATIONS = 3
 N_TURBINES = 10
 TURBINE_RATED_POWER_KW = 3000.0
 WIND_CAPACITY_KW = N_TURBINES * TURBINE_RATED_POWER_KW
-CUT_IN_MS = 4.0
-RATED_WIND_MS = 15.0
 CUT_OUT_MS = 25.0
 
 # Curva V90-3.0 MW digitalizada del folleto, a densidad estándar.
@@ -370,6 +372,20 @@ def step_5_island_consumption() -> pd.DataFrame:
     return df
 
 
+def run_notebooks(names: list[str]) -> None:
+    """Ejecuta los notebooks en orden desde su carpeta. Los originales no se reescriben:
+    los efectos (CSV, PNG, modelos) quedan en disco; las salidas de celdas se descartan."""
+    import nbformat  # pylint: disable=import-outside-toplevel
+    from nbclient import NotebookClient  # pylint: disable=import-outside-toplevel
+
+    for name in names:
+        print(f"\n=== Notebook: {name} ===")
+        nb = nbformat.read(os.path.join(NOTEBOOKS_DIR, name), as_version=4)
+        NotebookClient(nb, timeout=None,
+                       resources={"metadata": {"path": NOTEBOOKS_DIR}}).execute()
+        print(f"{name}: ejecutado")
+
+
 def main() -> None:
     step_0_clean_readings()
     step_1_filter_stations()
@@ -377,6 +393,7 @@ def main() -> None:
     step_3_security_thresholds()
     step_4_eolic_lag_features()
     step_5_island_consumption()
+    run_notebooks(NOTEBOOKS)
     print(f"\nPipeline completado. Tabla para el modelo: {CONSUMPTION_CSV_PATH}")
 
 
