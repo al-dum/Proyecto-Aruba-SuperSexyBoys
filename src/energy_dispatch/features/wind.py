@@ -8,13 +8,17 @@ import pandas as pd
 
 # Parque Vader Piet: 10 turbinas Vestas V90-3.0 MW, 10 % de pérdidas.
 N_TURBINES = 10
+TURBINE_RATED_POWER_KW = 3000.0
 PARK_LOSSES = 0.10
 CUT_IN_MS = 4.0
 CUT_OUT_MS = 25.0
 
-# Curva V90-3.0 MW simplificada (docs/umbrales-seguridad-aruba.md).
-CURVE_MS = np.array([0, 4, 6, 8, 10, 12, 15, 25])
-CURVE_KW = np.array([0, 97, 414, 944, 1668, 2447, 3000, 3000])
+# Curva V90-3.0 MW digitalizada del folleto (docs/ProductbrochureV90_3_0_UK.pdf), por turbina
+# y a densidad estándar. Es la ÚNICA tabla del proyecto: generación, umbrales y pipeline la usan.
+V90_WIND_MS = np.array([4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0,
+                        10.5, 11.0, 11.5, 12.0, 12.5, 13.0, 13.5, 14.0, 14.5, 15.0])
+V90_POWER_KW = np.array([97, 160, 233, 317, 414, 516, 641, 780, 944, 1115, 1296, 1478,
+                         1668, 1862, 2061, 2254, 2447, 2606, 2732, 2843, 2928, 2984, 3000])
 
 
 def idw_average(readings: pd.DataFrame, stations: pd.DataFrame, column: str) -> pd.Series:
@@ -38,6 +42,19 @@ def park_wind_kmh(readings: pd.DataFrame, stations: pd.DataFrame) -> pd.Series:
 def wind_kmh_to_power_kw(wind_kmh) -> np.ndarray:
     """Potencia del parque (kW) para una velocidad de viento en km/h. NaN se propaga."""
     wind_ms = np.asarray(wind_kmh, dtype=float) / 3.6
-    power_per_turbine = np.interp(wind_ms, CURVE_MS, CURVE_KW)
-    power_per_turbine[(wind_ms < CUT_IN_MS) | (wind_ms >= CUT_OUT_MS)] = 0
+    power_per_turbine = np.interp(wind_ms, V90_WIND_MS, V90_POWER_KW)
+    # np.where (y no asignación) para que funcione también con un escalar.
+    power_per_turbine = np.where((wind_ms < CUT_IN_MS) | (wind_ms >= CUT_OUT_MS), 0, power_per_turbine)
     return power_per_turbine * N_TURBINES * (1 - PARK_LOSSES)
+
+
+def wind_kmh_for_power_share(share: float) -> float:
+    """Velocidad del viento (km/h) a la que el parque da `share` de su potencia nominal."""
+    per_turbine_kw = share * TURBINE_RATED_POWER_KW
+    return float(np.interp(per_turbine_kw, V90_POWER_KW, V90_WIND_MS)) * 3.6
+
+
+# Umbrales de alerta eólica (T2): 15 % y 40 % de la capacidad, y cut-out de la turbina.
+WIND_CRITICAL_KMH = wind_kmh_for_power_share(0.15)
+WIND_MODERATE_KMH = wind_kmh_for_power_share(0.40)
+WIND_CUT_OUT_KMH = CUT_OUT_MS * 3.6

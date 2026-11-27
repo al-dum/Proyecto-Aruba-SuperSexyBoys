@@ -1,4 +1,10 @@
-"""Modelos a t+15 min (T9) y su evaluación (T10).
+"""Catálogo de modelos a t+15 min (T9) y su evaluación (T10).
+
+Dónde está cada modelo:
+- `baselines.py`: persistencia, naive estacional, media de train y media por hora.
+- `gradient_boosting.py`: el modelo principal (Gradient Boosting, con `DeltaRegressor`).
+- este archivo: `build_models` (qué modelos se comparan), métricas, validación temporal y
+  alertas.
 
 Todos siguen la interfaz de scikit-learn y reciben la tabla completa de
 `energy_dispatch.features.t15.build_dataset`; cada modelo elige sus columnas. Así se
@@ -9,111 +15,24 @@ ML no gana a la persistencia, algo va mal.
 """
 import numpy as np
 import pandas as pd
-from sklearn.base import BaseEstimator, RegressorMixin, clone
-from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.base import clone
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import r2_score
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+from energy_dispatch.evaluation.metrics import bias, mae, mape, rmse
 from energy_dispatch.features.t15 import ANCHOR, TARGET, TARGET_HOUR
-from energy_dispatch.features.wind import wind_kmh_to_power_kw
+from energy_dispatch.features.wind import (
+    WIND_CRITICAL_KMH, WIND_CUT_OUT_KMH, WIND_MODERATE_KMH, wind_kmh_to_power_kw,
+)
+from energy_dispatch.models.baselines import HourlyMeanBaseline, SignalBaseline, TrainMeanBaseline
+from energy_dispatch.models.gradient_boosting import DeltaRegressor, make_gradient_boosting
 
-# Umbrales de alerta eólica del paso 3 (scripts/run_data_pipeline.py): el viento al que la
-# curva V90 da el 15 % (crítico) y el 40 % (moderado) de la capacidad, y el cut-out.
-WIND_CRITICAL_KMH = 22.24
-WIND_MODERATE_KMH = 31.45
-WIND_CUT_OUT_KMH = 90.0
 # docs/umbrales-seguridad-aruba.md: > 30.3 °C dispara el aire acondicionado (alerta moderada).
 HOT_TEMPERATURE_C = 30.3
-
-
-class SignalBaseline(RegressorMixin, BaseEstimator):
-    """Copia una columna ya conocida en t. No aprende nada.
-
-    - Persistencia (`now`): "dentro de 15 min, lo mismo que ahora".
-    - Naive estacional (`same_time_yesterday`): "lo mismo que ayer a esa hora". Si ayer no
-      hay dato (primer día, huecos) cae a la persistencia.
-    """
-
-    def __init__(self, column: str = ANCHOR):
-        self.column = column
-
-    def fit(self, X, y=None):  # pylint: disable=unused-argument
-        self.is_fitted_ = True
-        return self
-
-    def predict(self, X):
-        return X[self.column].fillna(X[ANCHOR]).to_numpy(dtype=float)
-
-
-class TrainMeanBaseline(RegressorMixin, BaseEstimator):
-    """Media del objetivo en entrenamiento (DummyRegressor del PDF, §12.2)."""
-
-    def fit(self, X, y):  # pylint: disable=unused-argument
-        self.mean_ = float(np.mean(y))
-        return self
-
-    def predict(self, X):
-        return np.full(len(X), self.mean_)
-
-
-class HourlyMeanBaseline(RegressorMixin, BaseEstimator):
-    """Media del objetivo en entrenamiento para cada hora local del instante objetivo.
-
-    Las medias salen SOLO de `fit`: calcularlas con toda la serie sería una fuga.
-    """
-
-    def __init__(self, hour_column: str = TARGET_HOUR):
-        self.hour_column = hour_column
-
-    def fit(self, X, y):
-        y = pd.Series(np.asarray(y), index=X.index)
-        self.hourly_mean_ = y.groupby(X[self.hour_column]).mean()
-        self.global_mean_ = float(y.mean())
-        return self
-
-    def predict(self, X):
-        return X[self.hour_column].map(self.hourly_mean_).fillna(self.global_mean_).to_numpy()
-
-
-class DeltaRegressor(RegressorMixin, BaseEstimator):
-    """Aprende el CAMBIO en 15 min (objetivo - valor actual) y lo suma al valor actual.
-
-    A 15 min vista el valor actual explica casi todo; lo que hay que aprender es la
-    variación. Además los árboles no extrapolan: si el consumo de test supera el máximo de
-    train, un árbol que predice niveles se queda clavado en ese máximo, mientras que uno
-    que predice incrementos no.
-    """
-
-    def __init__(self, estimator=None, features=None, anchor: str = ANCHOR):
-        self.estimator = estimator
-        self.features = features
-        self.anchor = anchor
-
-    def fit(self, X, y):
-        delta = np.asarray(y, dtype=float) - X[self.anchor].to_numpy(dtype=float)
-        self.estimator_ = clone(self.estimator).fit(X[list(self.features)], delta)
-        return self
-
-    def predict(self, X):
-        delta = self.estimator_.predict(X[list(self.features)])
-        return X[self.anchor].to_numpy(dtype=float) + delta
-
-
-def make_gradient_boosting(features: list[str], **params) -> DeltaRegressor:
-    """HistGradientBoostingRegressor (PDF §12.5): rápido y acepta NaN sin imputar.
-
-    `early_stopping=False`: su parada temprana separa una validación ALEATORIA dentro de
-    train, que en una serie temporal mezcla pasado y futuro.
-    """
-    defaults = {"max_iter": 300, "learning_rate": 0.05, "max_leaf_nodes": 31,
-                "min_samples_leaf": 100, "loss": "squared_error"}
-    gb = HistGradientBoostingRegressor(**{**defaults, **params}, early_stopping=False,
-                                       random_state=42)
-    return DeltaRegressor(gb, features)
 
 
 def build_models(features: list[str], gb_params: dict | None = None) -> dict:
@@ -144,15 +63,15 @@ def regression_metrics(y_true, y_pred, problem: str) -> dict:
     """
     yt, yp = to_output(y_true, problem), to_output(y_pred, problem)
     out = {
-        "mae_kw": mean_absolute_error(yt, yp),
-        "rmse_kw": float(np.sqrt(mean_squared_error(yt, yp))),
+        "mae_kw": mae(yt, yp),
+        "rmse_kw": rmse(yt, yp),
         "r2": r2_score(yt, yp),
-        "sesgo_kw": float(np.mean(yp - yt)),
+        "sesgo_kw": bias(yt, yp),
     }
     if problem == "wind":
-        out["mae_kmh"] = mean_absolute_error(np.asarray(y_true), np.asarray(y_pred))
+        out["mae_kmh"] = mae(np.asarray(y_true), np.asarray(y_pred))
     else:
-        out["mape_pct"] = float(np.mean(np.abs((yt - yp) / yt)) * 100)
+        out["mape_pct"] = mape(yt, yp)
     return out
 
 

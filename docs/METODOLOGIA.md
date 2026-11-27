@@ -86,7 +86,7 @@ sentido probar.
 ## 6. Features — de la hipótesis al código
 
 Cada variable que el EDA sugiere que importa se prueba en notebook y, si aporta, se
-congela en `features/build.py`. Típicas en demanda energética:
+congela en `features/t15.py`. Típicas en demanda energética:
 
 - Lags (`demanda_t-1`, `demanda_t-24`, `demanda_t-168`)
 - Medias móviles
@@ -136,8 +136,8 @@ error — por eso este paso va el último, no en paralelo.
 | Limpieza | notebook → `src/data/cleaning.py` | la regla de limpieza es estable |
 | Validación calidad | `tests/` | desde el principio — corre en cada CSV nuevo |
 | EDA | notebook | nunca — es exploración |
-| Features | notebook → `src/features/build.py` | se decide que esa variable se queda |
-| Modelo | notebook → `src/models/train.py` | se fijan hiperparámetros finales |
+| Features | notebook → `src/energy_dispatch/features/t15.py` | se decide que esa variable se queda |
+| Modelo | notebook → `src/energy_dispatch/models/t15.py` | se fijan hiperparámetros finales |
 | Pipeline completo | `main.py` | todo lo anterior es estable |
 
 ## Regla general de notebook → código

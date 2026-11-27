@@ -6,7 +6,9 @@ import pytest
 from energy_dispatch.features.t15 import (
     ANCHOR, METEO, TARGET, TARGET_TIME, build_dataset, feature_columns, temporal_split,
 )
-from energy_dispatch.models.t15 import DeltaRegressor, HourlyMeanBaseline, wind_alert
+from energy_dispatch.models.baselines import HourlyMeanBaseline
+from energy_dispatch.models.gradient_boosting import DeltaRegressor
+from energy_dispatch.models.t15 import wind_alert
 
 
 def make_instants(n=600, seed=0):

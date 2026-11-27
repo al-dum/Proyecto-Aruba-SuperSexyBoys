@@ -2,42 +2,49 @@
 
 Este documento justifica la elección de **Gradient Boosting**
 (`HistGradientBoostingRegressor` de scikit-learn) como modelo principal para pronosticar la
-generación del parque eólico Vader Piet. También explica cómo se eliminó la fuga de datos
-(*data leakage*) y qué resultados da frente a los modelos de referencia.
+generación del parque eólico Vader Piet a 15 minutos. También explica cómo se eliminó la fuga
+de datos (*data leakage*) y qué resultados da frente a los modelos de referencia.
 
-- Código: `src/energy_dispatch/features/forecast.py`, `src/energy_dispatch/models/train.py`
-- Entrenamiento: `python scripts/train_wind_model.py --horizons 1 12 72 288`
-- Tests de no-fuga: `tests/test_forecast.py`
+- Código actual (t+15 min): `src/energy_dispatch/features/t15.py` (variables),
+  `src/energy_dispatch/models/gradient_boosting.py` (el modelo),
+  `src/energy_dispatch/models/baselines.py` (referencias) y `src/energy_dispatch/models/t15.py`
+  (catálogo `build_models`, métricas y validación)
+- Entrenamiento: `python scripts/train_t15.py --problems wind`
+- Tests de no-fuga: `tests/test_t15.py`
+
+> **Nota:** las cifras de este documento (§4) proceden de `reports/t15/`, la última ejecución de
+> `scripts/train_t15.py`. Las versiones anteriores de este documento, que usaban horizontes de
+> 6 h y 24 h y un pipeline ya eliminado, han quedado obsoletas. El detalle completo de
+> resultados está en `docs/RESULTADOS_T9_T10.md`.
 
 ## 1. El problema
 
 | | |
 |---|---|
-| **Qué se predice** | Velocidad del viento en el parque en *t + h*; la generación (kW) se obtiene con la curva de potencia V90-3.0 MW |
+| **Qué se predice** | Velocidad del viento en el parque en *t + 15 min*; la generación (kW) se obtiene con la curva de potencia V90-3.0 MW |
 | **Granularidad** | 5 minutos |
-| **Horizontes evaluados** | 5 min, 1 h, 6 h y 24 h (12, 72 y 288 pasos) |
-| **Datos** | 3 estaciones cercanas al parque, 31-mar a 30-jun de 2026 (~26 000 instantes) |
-| **Uso** | Alimentar el despacho (`dispatch.horizon_hours: 24`) |
+| **Horizontes evaluados** | 5 min, 15 min, 30 min y 1 h |
+| **Datos** | 3 estaciones cercanas al parque, del 1-sep-2025 al 17-sep-2026 (109 988 instantes) |
+| **Uso** | Pronóstico a 15 min para `predict.py` y para la interfaz (T13) |
 
 Rasgos de la serie que condicionan el modelo:
 
-- **Ciclo diario muy marcado**: el viento sube de noche (~27 km/h) y baja a mediodía
-  (~21 km/h). La autocorrelación a 24 h es 0,79 y a 12 h es −0,73.
-- **Ráfagas aisladas**: 61 instantes superan 35 km/h con una media de 24 km/h.
-- **Relación viento → potencia muy no lineal**: cero por debajo de 4 m/s, crecimiento casi
-  cúbico y saturación a 3 MW por turbina.
-- **Solo 3 meses**: no hay estacionalidad anual que aprender.
+- **Relación viento → potencia muy no lineal**: cero por debajo de 4 m/s (*cut-in*), crecimiento
+  casi cúbico y saturación a 3 MW por turbina.
+- **Un año de datos**: hay un solo ciclo anual, así que no se puede validar la estacionalidad
+  anual con los datos disponibles.
+- **Huecos de red**: 36 huecos en las lecturas. El pipeline no los rellena.
 
 ## 2. Por qué Gradient Boosting
 
 | Modelo | A favor | En contra para este proyecto |
 |---|---|---|
-| Persistencia / naive estacional | Imbatibles como referencia, coste cero | No aprenden nada; fallan cuando el ciclo diario cambia de tendencia |
+| Persistencia / naive estacional | Imbatibles como referencia, coste cero | No aprenden nada; fallan cuando el viento cambia de tendencia |
 | Media por hora (climatología) | Captura el ciclo diario | Ignora el estado actual del viento |
-| Regresión lineal | Simple, interpretable, buena a muy corto plazo | No capta no linealidades ni interacciones (hora × nivel de viento) |
+| Regresión lineal (Ridge) | Simple, interpretable, buena a muy corto plazo | No capta no linealidades ni interacciones (hora × nivel de viento) |
 | Random Forest | No lineal, robusto | Más lento, no gestiona NaN tan bien y no tiene pérdida cuantílica nativa en scikit-learn |
 | ARIMA / SARIMA | Clásico en series temporales | Una sola serie, mal con variables exógenas y con estacionalidad de 288 pasos |
-| LSTM / redes neuronales | Potentes con mucha historia | 3 meses y 3 estaciones son pocos datos; difícil de validar y mantener |
+| LSTM / redes neuronales | Potentes con mucha historia | Un año y tres estaciones son pocos datos; difícil de validar y mantener |
 | **Gradient Boosting** | **No lineal, combina lags + calendario + meteorología, rápido, maneja NaN** | Puede sobreajustar ráfagas si no se regulariza (ver §4) |
 
 Motivos concretos:
@@ -51,11 +58,11 @@ Motivos concretos:
 3. **NaN nativos**: los retardos quedan vacíos tras un hueco en los datos (decisión
    explícita para no inventar valores). `HistGradientBoostingRegressor` los trata sin
    imputar.
-4. **Pérdidas robustas y cuantílicas**: `absolute_error` es robusta a ráfagas, y
-   `quantile` permite un pronóstico conservador para el despacho (sobrestimar el viento
-   es el error caro).
-5. **Rápido y sin dependencias nuevas**: entrena en segundos con ~21 000 filas y viene
-   en scikit-learn. LightGBM o XGBoost darían resultados similares.
+4. **Pérdidas robustas**: `absolute_error` es robusta a ráfagas aisladas; el ajuste de §4
+   compara las dos pérdidas.
+5. **Rápido y sin dependencias nuevas**: cada configuración se evalúa en unos 4 s con 5 folds
+   sobre ~85 000 filas de desarrollo, y viene en scikit-learn. LightGBM o XGBoost darían
+   resultados similares.
 
 ### Por qué se predice viento y no potencia
 
@@ -73,70 +80,72 @@ entrenar**:
 |---|---|---|---|
 | 1 | **Objetivo contemporáneo**: `generacion_eolica_kw(t)` en la misma fila que `wind_speed_kmh(t)` y `wind_alert(t)` | La generación *es* una función del viento en *t*: el modelo "acierta" al 100 % y en producción no sirve, porque el viento futuro no se conoce | El objetivo se desplaza al futuro con `shift(-h)`; todas las variables usan datos de *t* o anteriores |
 | 2 | **Filas duplicadas por estación**: 3 filas por instante con el mismo objetivo | Con un split aleatorio el mismo instante aparece en train y en test | Una fila por instante; cada estación es una columna |
-| 3 | **Split aleatorio** (`test_size: 0.2` sin orden) | Entrena con el futuro y evalúa con el pasado | Split temporal: test = el último 20 % de la serie |
+| 3 | **Split aleatorio** (`test_size: 0.2` sin orden) | Entrena con el futuro y evalúa con el pasado | Split temporal: prueba = el último 20 % de la serie |
 | 4 | **Sin embargo entre train y test** | Las últimas *h* filas de train tienen como objetivo valores que están en test | Train solo incluye filas cuyo objetivo (*t + h*) es anterior al inicio de test |
 | 5 | **Ventanas que miran al futuro** (medias centradas, interpolaciones) | Usan valores posteriores a *t* | Solo `shift(k ≥ 0)` y `rolling` hacia atrás |
-| 6 | **Preprocesado ajustado con todos los datos** (imputación, escalado, media por hora) | Las estadísticas de test se filtran al modelo | Todo va dentro de un `Pipeline` que se ajusta solo con train, también en cada fold de la validación cruzada |
+| 6 | **Preprocesado ajustado con todos los datos** (imputación, escalado, media por hora) | Las estadísticas de test se filtran al modelo | Todo va dentro de un `Pipeline` o del baseline, que se ajustan solo con train, también en cada fold de la validación cruzada |
 | 7 | **Retardos que cruzan huecos** | `shift(k)` deja de significar "hace k × 5 min" | Reindexado a una rejilla regular de 5 min |
 
-Los tests de `tests/test_forecast.py` lo comprueban de forma automática. Por ejemplo:
-si se modifican los datos posteriores a un instante *t*, las variables de las filas
-≤ *t* **no cambian**.
+Los tests de `tests/test_t15.py` cubren parte de estas garantías: el objetivo está
+exactamente a 15 min, los huecos no se puentean, la partición purga los objetivos que
+caen en test y la media por hora solo aprende de train.
 
 Fuera del modelo quedan dos puntos a vigilar:
 
 - La limpieza (paso 0) imputa huecos aislados con la media del valor anterior y el
-  siguiente, lo que usa un dato futuro. Hoy no afecta (0 valores imputados), pero en
-  tiempo real habría que imputar solo con el pasado.
+  siguiente, lo que usa un dato futuro. En la última ejecución no se imputó ningún valor
+  (`data_cleaning_report.json`: `isolated_values_imputed: 0`), pero en tiempo real habría que
+  imputar solo con el pasado.
 - El consumo de la isla (`consumption.py`) es **sintético** y se calibra con la media de
   cada mes completo. Si se entrena un modelo de demanda con esa serie, el modelo solo
   aprenderá el generador sintético.
 
-## 4. Resultados (test: 12 al 30 de junio de 2026)
+## 4. Resultados (prueba: 6-jul a 17-sep de 2026)
 
-MAE de generación en kW (menor es mejor). *Skill* = mejora sobre la persistencia.
-Capacidad del parque: 27 000 kW.
+Cifras de `reports/t15/`. Detalle completo en `docs/RESULTADOS_T9_T10.md`.
 
-| Modelo | 5 min | 1 h | 6 h | 24 h |
+MAE de generación en kW a 15 min (menor es mejor). *Mejora* = frente a la persistencia.
+
+| Modelo | MAE kW | RMSE kW | R² | Mejora |
 |---|---:|---:|---:|---:|
-| Persistencia | 47 | 355 | 1 735 | 585 |
-| Naive estacional (ayer misma hora) | 582 | 582 | 583 | 585 |
-| Media por hora | 416 | 416 | 418 | **422** |
-| Regresión lineal | **40** | 175 | 375 | 533 |
-| **Gradient Boosting** | 47 | **162** | **358** | **422** |
-| *Skill* de GB vs. persistencia | 0 % | 54 % | 79 % | 28 % |
+| Persistencia | 106.4 | 181.6 | 0.986 | — |
+| Ridge | 75.1 | 144.2 | 0.991 | 29 % |
+| **Gradient Boosting** | **64.8** | **101.7** | **0.996** | **39 %** |
+
+Por horizonte, el MAE de Gradient Boosting es 38, 65, 93 y 136 kW a 5, 15, 30 y 60 minutos.
+La persistencia da 47, 106, 194 y 365 kW. La mejora sobre la persistencia crece con el
+horizonte, de 18 % a 5 min hasta 63 % a 1 h.
 
 Lectura honesta:
 
-- **1 h y 6 h** (los horizontes útiles para el despacho intradiario): Gradient Boosting es
-  el mejor modelo y supera a la regresión lineal y a todos los baselines.
-- **5 min**: casi no hay nada que aprender. La persistencia y la regresión lineal bastan;
-  un modelo complejo no aporta.
-- **24 h**: Gradient Boosting empata con la media por hora. Con solo datos de estaciones,
-  lo único predecible a un día vista es el ciclo diario. **Para mejorar a 24 h hacen
-  falta pronósticos meteorológicos numéricos (NWP) como variables de entrada**; es lo que
-  más valor añadiría al proyecto.
-- **Hora punta de error**: todos los modelos con lags fallan más alrededor de las 18 h
-  locales, cuando el viento cambia de tendencia. La media por hora acierta ahí. Conviene
-  revisarlo con `reports/wind_model_mae_by_hour.csv`.
+- **A 5 min** hay poco que aprender: la persistencia ya acierta casi todo.
+- **A 15 min y 1 h** (los horizontes útiles para el despacho intradiario), Gradient Boosting
+  supera a Ridge y a todos los baselines.
+- **Hora de peor error:** Ridge y la persistencia fallan más a las 18 h (216 y 226 kW).
+  Gradient Boosting tiene su peor hora a las 3 h (92 kW).
+- **Viento cerca de los umbrales de alerta:** Gradient Boosting da 136 falsas alarmas críticas
+  frente a 267 de Ridge, pero deja sin avisar 114 críticas frente a 102 de Ridge (sobre 6 152
+  críticas reales). Ver `docs/RESULTADOS_T9_T10.md`.
 
-### Ajuste que hizo falta: ráfagas y sobreajuste
+### Ajuste de hiperparámetros: ráfagas y sobreajuste
 
-La primera versión (`loss: squared_error`, `max_depth: 6`) **perdía frente a la media por
-hora a 6 h y 24 h**, con un sesgo de +250 kW. La pérdida cuadrática penaliza mucho los
-errores grandes, así que los árboles profundos perseguían las ráfagas aisladas y
-sobreajustaban. Con `loss: absolute_error` (predice la mediana, robusta a ráfagas),
-`max_depth: 3` y `min_samples_leaf: 200`, el MAE a 6 h bajó de 545 a 358 kW y el sesgo
-casi desapareció.
+La búsqueda compara 72 configuraciones con validación temporal: `learning_rate`,
+`max_iter`, `max_leaf_nodes` (7, 15, 31), `min_samples_leaf` (50, 200, 500) y `loss`. La
+configuración elegida usa árboles de hasta 31 hojas y hojas con al menos 50 instantes.
+
+El motivo es el mismo que en la primera versión del modelo: a 15 min el cambio del viento es
+casi todo ruido, y un modelo flexible lo sobreajusta. Las hojas grandes y el número moderado
+de iteraciones lo evitan. En viento, la pérdida cuadrática y la absoluta quedan empatadas
+(MAE de validación 65.6 kW en ambos casos); en demanda gana la absoluta, que es robusta a los
+picos aislados.
 
 ## 5. Siguientes pasos
 
-1. **NWP como variable de entrada** para el horizonte de 24 h.
+1. **NWP como variable de entrada** para horizontes de más de 1 h: las estaciones no anticipan
+   los cambios de tiempo.
 2. **Pérdida cuantílica** (`loss: quantile`, `quantile: 0.3`) para el despacho: se
-   prefiere quedarse corto en viento que pasarse.
-3. **Ajuste de hiperparámetros** con `TimeSeriesSplit` (ya integrado en el script como
-   validación cruzada temporal con `gap = horizonte`).
-4. **Un modelo por horizonte** o un único modelo con el horizonte como variable, para
-   cubrir toda la ventana de 24 h del despacho.
-5. Recalcular cuando haya **más meses de datos**: con un año completo cambia el balance
-   entre modelos (estacionalidad anual).
+   prefiere quedarse corto en viento que pasarse. Reduciría las críticas no avisadas.
+3. **Un modelo por horizonte** o un único modelo con el horizonte como variable, para
+   cubrir más de una hora del despacho. Ahora solo hay modelo a 15 min.
+4. Validar la **estacionalidad anual** cuando haya más de un año de datos: con el año actual
+   solo hay un ciclo.

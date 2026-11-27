@@ -28,8 +28,6 @@ MONTHS = [
 ]
 NAVY = "17365D"
 BLUE = "1F4E78"
-LIGHT_BLUE = "D9EAF7"
-PALE_BLUE = "EAF3F8"
 WHITE = "FFFFFF"
 GREY = "666666"
 THIN_GREY = Side(style="thin", color="B7C9D6")

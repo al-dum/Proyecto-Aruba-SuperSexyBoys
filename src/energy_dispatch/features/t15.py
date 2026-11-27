@@ -94,12 +94,13 @@ def feature_columns(problem: str) -> list[str]:
 
 
 def build_dataset(instants: pd.DataFrame, problem: str,
-                  horizon: pd.Timedelta = HORIZON) -> pd.DataFrame:
+                  horizon: pd.Timedelta = HORIZON, require_target: bool = True) -> pd.DataFrame:
     """Variables en t (solo pasado) y objetivo en t + horizonte, una fila por instante.
 
     `instants` debe venir de `instant_table` (rejilla regular). Se descartan las filas sin
     valor actual o sin objetivo; los NaN de los retardos se dejan como NaN (no se inventan
-    datos) y los gestiona cada modelo.
+    datos) y los gestiona cada modelo. Con `require_target=False` (inferencia) no se exige
+    objetivo, así que la última fila —sin futuro— también se conserva.
     """
     if not (instants.index.to_series().diff().dropna() == FREQ).all():
         raise ValueError("La tabla debe estar en una rejilla regular de 5 min (instant_table).")
@@ -153,7 +154,11 @@ def build_dataset(instants: pd.DataFrame, problem: str,
 
     X[TARGET] = s.shift(-steps)
     X[TARGET_TIME] = target_time
-    return X[X[ANCHOR].notna() & X[TARGET].notna()].copy()
+
+    keep = X[ANCHOR].notna()
+    if require_target:
+        keep &= X[TARGET].notna()
+    return X[keep].copy()
 
 
 def temporal_split(data: pd.DataFrame, test_fraction: float = 0.2):
