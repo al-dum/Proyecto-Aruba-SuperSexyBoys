@@ -35,13 +35,13 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 
 # pylint: disable=wrong-import-position
 from energy_dispatch.features.t15 import (  # noqa: E402
-    FREQ, HORIZON, SIGNALS, TARGET, TARGET_HOUR, TARGET_TIME,
+    FREQ, HORIZON, SIGNALS, TARGET, TARGET_TIME,
     build_dataset, feature_columns, instant_table, temporal_split,
 )
+from energy_dispatch.models.gradient_boosting import make_gradient_boosting  # noqa: E402
 from energy_dispatch.models.t15 import (  # noqa: E402
     HOT_TEMPERATURE_C, WIND_CRITICAL_KMH, WIND_MODERATE_KMH, build_models, error_by_hour,
-    make_gradient_boosting, regression_metrics, summarize_cv, temporal_cv, to_output,
-    wind_alert,
+    regression_metrics, summarize_cv, temporal_cv, to_output, wind_alert,
 )
 
 STATIONS = os.path.join(ROOT, "data/processed/1_station_filtering/"

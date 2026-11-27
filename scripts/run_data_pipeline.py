@@ -13,7 +13,8 @@ from energy_dispatch.data.consumption import (  # noqa: E402  pylint: disable=wr
 )
 from energy_dispatch.features.build import add_lag_features  # noqa: E402  pylint: disable=wrong-import-position
 from energy_dispatch.features.wind import (  # noqa: E402  pylint: disable=wrong-import-position
-    park_wind_kmh, wind_kmh_to_power_kw,
+    CUT_OUT_MS, N_TURBINES, TURBINE_RATED_POWER_KW, WIND_CUT_OUT_KMH, park_wind_kmh,
+    wind_kmh_for_power_share, wind_kmh_to_power_kw,
 )
 
 
@@ -88,17 +89,8 @@ TARGET_LON = -69.89153669806423
 EARTH_RADIUS_M = 6371000.0
 N_NEAREST_STATIONS = 3
 
-# Pasos 3 y 4: parque Vader Piet (Vestas V90-3.0 MW)
-N_TURBINES = 10
-TURBINE_RATED_POWER_KW = 3000.0
+# Paso 3: capacidad del parque Vader Piet (la curva V90 vive en features/wind.py)
 WIND_CAPACITY_KW = N_TURBINES * TURBINE_RATED_POWER_KW
-CUT_OUT_MS = 25.0
-
-# Curva V90-3.0 MW digitalizada del folleto, a densidad estándar.
-V90_WIND_MS = np.array([4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0,
-                        10.5, 11.0, 11.5, 12.0, 12.5, 13.0, 13.5, 14.0, 14.5, 15.0])
-V90_POWER_KW = np.array([97, 160, 233, 317, 414, 516, 641, 780, 944, 1115, 1296, 1478,
-                         1668, 1862, 2061, 2254, 2447, 2606, 2732, 2843, 2928, 2984, 3000])
 
 LAGS = range(1, 5)
 
@@ -252,16 +244,12 @@ def step_3_security_thresholds() -> pd.DataFrame:
 
     threshold_40_pct = WIND_CAPACITY_KW * 0.40
     threshold_15_pct = WIND_CAPACITY_KW * 0.15
-    critical_wind_ms = np.interp(threshold_15_pct / N_TURBINES, V90_POWER_KW, V90_WIND_MS)
-    moderate_wind_ms = np.interp(threshold_40_pct / N_TURBINES, V90_POWER_KW, V90_WIND_MS)
-    wind_critical_kmh = critical_wind_ms * 3.6
-    wind_moderate_kmh = moderate_wind_ms * 3.6
-    wind_cut_out_kmh = CUT_OUT_MS * 3.6
+    wind_critical_kmh = wind_kmh_for_power_share(0.15)
+    wind_moderate_kmh = wind_kmh_for_power_share(0.40)
+    wind_cut_out_kmh = WIND_CUT_OUT_KMH
 
-    print(f"15% de capacidad: {threshold_15_pct:,.0f} kW -> {critical_wind_ms:.2f} m/s "
-          f"-> {wind_critical_kmh:.1f} km/h")
-    print(f"40% de capacidad: {threshold_40_pct:,.0f} kW -> {moderate_wind_ms:.2f} m/s "
-          f"-> {wind_moderate_kmh:.1f} km/h")
+    print(f"15% de capacidad: {threshold_15_pct:,.0f} kW -> {wind_critical_kmh:.1f} km/h")
+    print(f"40% de capacidad: {threshold_40_pct:,.0f} kW -> {wind_moderate_kmh:.1f} km/h")
     print(f"Cut-out V90: {CUT_OUT_MS:.0f} m/s -> {wind_cut_out_kmh:.1f} km/h")
 
     if "wind_power_kw" in df.columns:
@@ -306,8 +294,8 @@ def step_4_eolic_lag_features() -> pd.DataFrame:
         raise ValueError("Las lecturas no corresponden a las estaciones seleccionadas. "
                          "Ejecuta de nuevo los pasos 2 y 3.")
 
-    # Viento en el parque (media ponderada por inverso de la distancia) y curva simplificada
-    # V90-3.0 MW: 10 turbinas y 10 % de pérdidas. Sin corrección de altura: el viento de las
+    # Viento en el parque (media ponderada por inverso de la distancia) y curva V90-3.0 MW
+    # (features/wind.py): 10 turbinas y 10 % de pérdidas. Sin corrección de altura: el viento de las
     # estaciones se usa directamente (docs/umbrales-seguridad-aruba.md). La lógica vive en
     # energy_dispatch.features.wind para que el modelo use exactamente la misma conversión.
     wind_at_park = park_wind_kmh(df, nearby_stations)

@@ -42,6 +42,38 @@ python main.py --config configs/config.yaml
 pytest
 ```
 
+## Predicción a t+15 min
+
+Requiere el modelo entrenado (`python scripts/train_t15.py --problems wind`, que crea
+`models/gb_t15_wind.pkl`). La entrada son lecturas en formato largo: una fila por estación e
+instante de 5 min, con `station_id, timestamp, wind_speed_kmh, wind_direction_deg,
+temperature_c, humidity_pct, pressure_hpa, precipitation_mm`. Hacen falta al menos 24 h de
+historia hasta el último instante.
+
+Desde la terminal:
+
+```bash
+python -m energy_dispatch.predict --readings lecturas.csv --problem wind
+```
+
+Desde Python (por ejemplo, desde el frontend):
+
+```python
+import pandas as pd
+from energy_dispatch.predict import PredictionInputError, predict
+
+readings = pd.read_csv("lecturas.csv")
+try:
+    result = predict(readings, problem="wind")
+    print(result)  # dict con timestamp, target_time, prediction_kw, wind_kmh y alert
+except PredictionInputError as error:
+    print(f"Entrada no válida: {error}")
+```
+
+La salida incluye `timestamp`, `target_time` (t + 15 min) y `prediction_kw`. Para el viento
+añade `wind_kmh` y `alert` (NORMAL / MODERATE / CRITICAL, umbrales de T2). La demanda
+(`--problem demand`) exige además `consumo_estimado_isla_kw`.
+
 ## Pipeline de datos
 
 `scripts/run_data_pipeline.py` ejecuta en orden los pasos prototipados en los

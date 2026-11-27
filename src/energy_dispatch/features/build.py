@@ -29,11 +29,6 @@ def add_exact_time_features(
     return out
 
 
-def add_time_features(df: pd.DataFrame, timestamp_col: str = "timestamp") -> pd.DataFrame:
-    ts = df[timestamp_col]
-    return df.assign(hour=ts.dt.hour, dayofweek=ts.dt.day_of_week, month=ts.dt.month)
-
-
 def add_lag_features(
     df: pd.DataFrame,
     target_col: str = "generacion_eolica_kw",
